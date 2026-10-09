@@ -27,7 +27,9 @@ pipeline {
         stage('3. Unit Test') {
             steps {
                 echo 'Running unit tests...'
-                sh 'mvn test'
+                dir('Desktop/my-java-app') {
+    sh 'mvn clean compile'
+}
             }
             post {
                 always {
