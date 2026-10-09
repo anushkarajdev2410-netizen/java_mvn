@@ -18,7 +18,9 @@ pipeline {
         stage('2. Build') {
             steps {
                 echo 'Compiling Java application...'
-                sh 'mvn clean compile'
+                dir('my-java-app') {
+    sh 'mvn clean compile'
+}
             }
         }
 
