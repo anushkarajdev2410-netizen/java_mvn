@@ -1,70 +1,96 @@
-
 pipeline {
-    agent any
+agent any
 
-    tools {
-        jdk 'JDK-21'
-        maven 'Maven-3.10.0'
+```
+tools {
+    jdk 'JDK-21'
+    maven 'Maven-3.10.0'
+}
+
+environment {
+    PROJECT_DIR = 'Desktop/my-java-app'
+}
+
+stages {
+    stage('1. Checkout Code') {
+        steps {
+            echo 'Checking out source code from GitHub...'
+            checkout scm
+
+            sh '''
+                echo "Checking project structure..."
+                pwd
+                find . -maxdepth 5 \\( -name pom.xml -o -name Jenkinsfile \\) -print
+            '''
+        }
     }
 
-    stages {
-        stage('1. Checkout Code') {
-            steps {
-                echo 'Checking out source code from GitHub...'
-                checkout scm
+    stage('2. Build') {
+        steps {
+            echo 'Compiling Java application...'
+            dir("${PROJECT_DIR}") {
+                sh 'mvn clean compile'
             }
         }
+    }
 
-        stage('2. Build') {
-            steps {
-                echo 'Compiling Java application...'
-                dir('Desktop/my-java-app') {
-    sh 'mvn clean compile'
-}
+    stage('3. Unit Test') {
+        steps {
+            echo 'Running unit tests...'
+            dir("${PROJECT_DIR}") {
+                sh 'mvn test'
             }
         }
-
-        stage('3. Unit Test') {
-            steps {
-                echo 'Running unit tests...'
-                dir('Desktop/my-java-app') {
-    sh 'mvn clean compile'
-}
-            }
-            post {
-                always {
-                    junit '**/target/surefire-reports/*.xml'
-                }
+        post {
+            always {
+                junit allowEmptyResults: true,
+                      testResults: 'Desktop/my-java-app/target/surefire-reports/*.xml'
             }
         }
+    }
 
-        stage('4. Package') {
-            steps {
-                echo 'Packaging application...'
+    stage('4. Package') {
+        steps {
+            echo 'Packaging application...'
+            dir("${PROJECT_DIR}") {
                 sh 'mvn package -DskipTests'
-                archiveArtifacts artifacts: 'target/*.jar',
-                                 fingerprint: true
             }
-        }
 
-        stage('5. Deploy') {
-            steps {
-                echo 'Deploying application artifact...'
-                sh '''
-                    mkdir -p "$WORKSPACE/deployment"
-                    cp target/*.jar "$WORKSPACE/deployment/app.jar"
-                    echo "Artifact copied to deployment directory."
-                '''
-            }
+            archiveArtifacts artifacts:
+                'Desktop/my-java-app/target/*.jar',
+                fingerprint: true
         }
     }
 
-    post {
-        success {
-            echo 'Pipeline completed successfully!'
-        }
-        failure {
-            echo 'Pipeline failed. Check the console logs.'
+    stage('5. Deploy') {
+        steps {
+            echo 'Deploying application artifact...'
+            sh '''
+                set -eu
+                mkdir -p "$WORKSPACE/deployment"
+
+                set -- "$WORKSPACE/Desktop/my-java-app"/target/*.jar
+
+                if [ ! -f "$1" ]; then
+                    echo "ERROR: No JAR artifact found."
+                    exit 1
+                fi
+
+                cp "$1" "$WORKSPACE/deployment/app.jar"
+                echo "Artifact copied to deployment directory."
+            '''
         }
     }
+}
+
+post {
+    success {
+        echo 'Pipeline completed successfully!'
+    }
+    failure {
+        echo 'Pipeline failed. Check the console logs.'
+    }
+}
+```
+
 }
