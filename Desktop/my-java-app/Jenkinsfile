@@ -1,6 +1,7 @@
 pipeline {
 agent any
 
+
 tools {
     jdk 'JDK-21'
     maven 'Maven-3.10.0'
@@ -11,15 +12,28 @@ environment {
 }
 
 stages {
-    stage('1. Checkout Code') {
+    stage('1. Checkout and Verify') {
         steps {
-            echo 'Checking out source code from GitHub...'
-            checkout scm
+            echo 'Verifying checked-out project...'
 
             sh '''
-                echo "Checking project structure..."
-                pwd
-                find . -maxdepth 5 \\( -name pom.xml -o -name Jenkinsfile \\) -print
+                set -eu
+
+                echo "Workspace: $WORKSPACE"
+                echo "Java version:"
+                java -version
+
+                echo "Java compiler version:"
+                javac -version
+
+                echo "Maven version:"
+                mvn -version
+
+                echo "Checking project files..."
+                test -f "$WORKSPACE/$PROJECT_DIR/pom.xml"
+                test -f "$WORKSPACE/$PROJECT_DIR/Jenkinsfile"
+
+                echo "pom.xml and Jenkinsfile found."
             '''
         }
     }
@@ -27,6 +41,7 @@ stages {
     stage('2. Build') {
         steps {
             echo 'Compiling Java application...'
+
             dir("${PROJECT_DIR}") {
                 sh 'mvn clean compile'
             }
@@ -36,10 +51,12 @@ stages {
     stage('3. Unit Test') {
         steps {
             echo 'Running unit tests...'
+
             dir("${PROJECT_DIR}") {
                 sh 'mvn test'
             }
         }
+
         post {
             always {
                 junit allowEmptyResults: true,
@@ -51,32 +68,42 @@ stages {
     stage('4. Package') {
         steps {
             echo 'Packaging application...'
+
             dir("${PROJECT_DIR}") {
                 sh 'mvn package -DskipTests'
             }
 
-            archiveArtifacts artifacts:
-                'Desktop/my-java-app/target/*.jar',
+            archiveArtifacts(
+                artifacts: 'Desktop/my-java-app/target/*.jar',
                 fingerprint: true
+            )
         }
     }
 
     stage('5. Deploy') {
         steps {
-            echo 'Deploying application artifact...'
+            echo 'Copying application artifact...'
+
             sh '''
                 set -eu
+
                 mkdir -p "$WORKSPACE/deployment"
 
-                set -- "$WORKSPACE/Desktop/my-java-app"/target/*.jar
+                JAR_FILE=$(find "$WORKSPACE/$PROJECT_DIR/target" \
+                    -maxdepth 1 -type f -name '*.jar' \
+                    ! -name '*-sources.jar' \
+                    ! -name '*-javadoc.jar' \
+                    | head -n 1)
 
-                if [ ! -f "$1" ]; then
-                    echo "ERROR: No JAR artifact found."
+                if [ -z "$JAR_FILE" ]; then
+                    echo "ERROR: No application JAR was generated."
                     exit 1
                 fi
 
-                cp "$1" "$WORKSPACE/deployment/app.jar"
-                echo "Artifact copied to deployment directory."
+                cp "$JAR_FILE" "$WORKSPACE/deployment/app.jar"
+
+                echo "Artifact copied successfully."
+                ls -lh "$WORKSPACE/deployment/app.jar"
             '''
         }
     }
@@ -86,9 +113,11 @@ post {
     success {
         echo 'Pipeline completed successfully!'
     }
+
     failure {
-        echo 'Pipeline failed. Check the console logs.'
+        echo 'Pipeline failed. Check the first actual error in Console Output.'
     }
 }
+
 
 }
